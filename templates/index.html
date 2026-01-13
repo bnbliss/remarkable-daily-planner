@@ -12,8 +12,15 @@
 
         <form id="calendar-form">
             <div class="form-group">
-                <label for="ical_urls">Your iCal URLs (comma-separated if multiple):</label>
-                <textarea id="ical_urls" name="ical_urls" rows="3" placeholder="https://calendar.google.com/calendar/ical/..."></textarea>
+                <label>Your iCal Calendars:</label>
+                <div id="calendar-list">
+                    <div class="calendar-entry">
+                        <input type="text" name="ical_url_0" class="ical-url" placeholder="https://calendar.google.com/calendar/ical/...">
+                        <input type="color" name="color_0" class="calendar-color" value="#4A4A4A" title="Event color">
+                        <button type="button" class="remove-calendar" title="Remove">&times;</button>
+                    </div>
+                </div>
+                <button type="button" id="add-calendar" class="add-btn">+ Add Calendar</button>
             </div>
 
             <div class="form-group">
@@ -65,6 +72,33 @@
     </div>
 
     <script>
+        // Calendar management
+        let calendarCount = 1;
+        const defaultColors = ['#4A4A4A', '#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#3B1F2B'];
+
+        document.getElementById('add-calendar').addEventListener('click', function() {
+            const calendarList = document.getElementById('calendar-list');
+            const newEntry = document.createElement('div');
+            newEntry.className = 'calendar-entry';
+            const colorIndex = calendarCount % defaultColors.length;
+            newEntry.innerHTML = `
+                <input type="text" name="ical_url_${calendarCount}" class="ical-url" placeholder="https://calendar.google.com/calendar/ical/...">
+                <input type="color" name="color_${calendarCount}" class="calendar-color" value="${defaultColors[colorIndex]}" title="Event color">
+                <button type="button" class="remove-calendar" title="Remove">&times;</button>
+            `;
+            calendarList.appendChild(newEntry);
+            calendarCount++;
+        });
+
+        document.getElementById('calendar-list').addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-calendar')) {
+                const entries = document.querySelectorAll('.calendar-entry');
+                if (entries.length > 1) {
+                    e.target.parentElement.remove();
+                }
+            }
+        });
+
         // Update end hour options based on start hour selection
         function updateEndHourOptions() {
             const startHour = parseInt(document.getElementById('start_hour').value);
@@ -76,7 +110,7 @@
 
             // Generate options for 8-12 hours duration
             const minEndHour = startHour + 8;  // Minimum 8 hours
-            const maxEndHour = Math.min(startHour + 12, 23);  // Maximum 12 hours or 11 PM
+            const maxEndHour = Math.min(startHour + 16, 23);  // Maximum 16 hours or 11 PM
 
             let selectedValue = null;
             for (let hour = minEndHour; hour <= maxEndHour; hour++) {
@@ -95,8 +129,8 @@
                 if (hour === currentEndHour && hour >= minEndHour && hour <= maxEndHour) {
                     option.selected = true;
                     selectedValue = hour;
-                } else if (!selectedValue && hour === Math.min(startHour + 11, maxEndHour)) {
-                    // Default to 11 hours or max available
+                } else if (!selectedValue && hour === Math.min(22, maxEndHour)) {
+                    // Default to 10 PM or max available
                     option.selected = true;
                     selectedValue = hour;
                 }

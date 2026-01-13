@@ -21,13 +21,14 @@ class CalendarFetcher:
                 'start': datetime_object,
                 'end': datetime_object,
                 'title': 'Event Title',
-                'date': 'YYYY-MM-DD'
+                'date': 'YYYY-MM-DD',
+                'calendar_index': int
             }
         ]
         """
         all_events = []
 
-        for url in self.urls:
+        for cal_index, url in enumerate(self.urls):
             try:
                 # try to force fresh data from ICS
                 import time
@@ -46,11 +47,11 @@ class CalendarFetcher:
                     if component.name == "VEVENT":
                         # check for recurring events
                         if component.get('RRULE'):
-                            recurring_events = self._parse_recurring_event(component, start_date, end_date)
+                            recurring_events = self._parse_recurring_event(component, start_date, end_date, cal_index)
                             all_events.extend(recurring_events)
                         else:
                             # single event
-                            event = self._parse_event(component, start_date, end_date)
+                            event = self._parse_event(component, start_date, end_date, cal_index)
                             if event:
                                 all_events.append(event)
 
@@ -72,7 +73,7 @@ class CalendarFetcher:
 
         return sorted(all_events, key=sort_key)
 
-    def _parse_event(self, event, start_date, end_date):
+    def _parse_event(self, event, start_date, end_date, cal_index=0):
         """Parse individual event and return formatted dict if in date range"""
         try:
             dtstart = event.get('dtstart')
@@ -115,14 +116,15 @@ class CalendarFetcher:
                 'start': start_dt,
                 'end': end_dt,
                 'title': str(summary),
-                'date': event_date.strftime('%Y-%m-%d')
+                'date': event_date.strftime('%Y-%m-%d'),
+                'calendar_index': cal_index
             }
             return result
 
         except Exception as e:
             return None
 
-    def _parse_recurring_event(self, event, start_date, end_date):
+    def _parse_recurring_event(self, event, start_date, end_date, cal_index=0):
         """Parse recurring event and expand occurrences within date range"""
         recurring_events = []
 
@@ -215,7 +217,8 @@ class CalendarFetcher:
                         'start': occurrence,
                         'end': end_time,
                         'title': str(summary),
-                        'date': event_date.strftime('%Y-%m-%d')
+                        'date': event_date.strftime('%Y-%m-%d'),
+                        'calendar_index': cal_index
                     })
 
 

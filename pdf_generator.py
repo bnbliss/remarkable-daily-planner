@@ -20,8 +20,10 @@ class PDFGenerator:
         self.content_width = self.page_width - (2 * self.margin)
         self.content_height = self.page_height - (2 * self.margin)
 
-    def generate_pdf(self, start_date, end_date, events, output_path, start_hour=6, end_hour=17, show_todos=True):
+    def generate_pdf(self, start_date, end_date, events, output_path, start_hour=6, end_hour=17, show_todos=True, calendar_colors=None):
         """Generate PDF with one page per day for the specified date range"""
+        if calendar_colors is None:
+            calendar_colors = ['#4A4A4A']
 
         c = canvas.Canvas(output_path, pagesize=(self.page_width, self.page_height))
         # Ensure no page borders
@@ -37,14 +39,16 @@ class PDFGenerator:
             day_events = [e for e in events if e['date'] == date_str]
 
 
-            self.draw_daily_page(c, current_date, day_events, start_hour, end_hour, show_todos)
+            self.draw_daily_page(c, current_date, day_events, start_hour, end_hour, show_todos, calendar_colors)
             if day_offset < total_days - 1:  # Don't add page after last day
                 c.showPage()
 
         c.save()
 
-    def draw_daily_page(self, c, current_date, events, start_hour=6, end_hour=17, show_todos=True):
+    def draw_daily_page(self, c, current_date, events, start_hour=6, end_hour=17, show_todos=True, calendar_colors=None):
         """Draw single day page with time slots and events"""
+        if calendar_colors is None:
+            calendar_colors = ['#4A4A4A']
         # Starting position (top of content area)
         y_pos = self.page_height - self.margin
 
@@ -91,7 +95,7 @@ class PDFGenerator:
 
             # Draw all-day events in their row
             all_day_box_y = y_pos - hour_height  # Full hour height for all-day section
-            self._draw_all_day_events(c, all_day_events, event_column_start, event_column_width, all_day_box_y, hour_height)
+            self._draw_all_day_events(c, all_day_events, event_column_start, event_column_width, all_day_box_y, hour_height, calendar_colors)
 
             # Draw hour line after all-day section
             c.setStrokeColor(grey)
@@ -135,7 +139,7 @@ class PDFGenerator:
             # Keep consistent hour height - let to-do section handle space constraints
 
         # Draw events (pass whether we have all-day events to adjust positioning)
-        self._draw_events(c, current_date, events, event_column_start, event_column_width, hour_height, start_hour, end_hour, has_all_day)
+        self._draw_events(c, current_date, events, event_column_start, event_column_width, hour_height, start_hour, end_hour, has_all_day, calendar_colors)
 
         # Draw to-do list section at the bottom (only if show_todos is True)
         if show_todos:
@@ -150,8 +154,10 @@ class PDFGenerator:
 
             self._draw_todo_section(c, schedule_bottom, todo_count, todo_height_multiplier)
 
-    def _draw_events(self, c, current_date, events, x_start, width, hour_height, start_hour=6, end_hour=17, has_all_day=False):
+    def _draw_events(self, c, current_date, events, x_start, width, hour_height, start_hour=6, end_hour=17, has_all_day=False, calendar_colors=None):
         """Draw events as rounded boxes positioned by time"""
+        if calendar_colors is None:
+            calendar_colors = ['#4A4A4A']
         # Base position matches the grid - align with first time label position
         # Account for header (12pt) + line (8pt) = 20pt total
         grid_top = self.page_height - self.margin - 20
@@ -245,8 +251,10 @@ class PDFGenerator:
                     event_width = notes_section_width / events_in_notes
                     event_x = notes_section_start + ((i - 1) * event_width)
 
-                # Draw rounded rectangle with dark grey background
-                self._draw_rounded_rect(c, event_x, box_y, event_width, box_height, radius=2)
+                # Draw rounded rectangle with calendar-specific color
+                cal_index = event.get('calendar_index', 0)
+                color = calendar_colors[cal_index] if cal_index < len(calendar_colors) else calendar_colors[0]
+                self._draw_rounded_rect(c, event_x, box_y, event_width, box_height, radius=2, color=color)
 
                 # Draw event text in white with bold font
                 c.setFillColor(HexColor('#FFFFFF'))
@@ -291,8 +299,10 @@ class PDFGenerator:
                 # Reset color
                 c.setFillColor(black)
 
-    def _draw_all_day_events(self, c, all_day_events, x_start, width, y_bottom, row_height):
+    def _draw_all_day_events(self, c, all_day_events, x_start, width, y_bottom, row_height, calendar_colors=None):
         """Draw all-day events in the all-day section"""
+        if calendar_colors is None:
+            calendar_colors = ['#4A4A4A']
         for i, event in enumerate(all_day_events):
             # Calculate position - first event in event section, others in notes section
             event_width = width
@@ -312,8 +322,10 @@ class PDFGenerator:
             box_height = row_height - 6  # Leave some spacing
             box_y = y_bottom + 3  # Small padding from bottom line
 
-            # Draw rounded rectangle with dark grey background
-            self._draw_rounded_rect(c, event_x, box_y, event_width, box_height, radius=2)
+            # Draw rounded rectangle with calendar-specific color
+            cal_index = event.get('calendar_index', 0)
+            color = calendar_colors[cal_index] if cal_index < len(calendar_colors) else calendar_colors[0]
+            self._draw_rounded_rect(c, event_x, box_y, event_width, box_height, radius=2, color=color)
 
             # Draw event text in white with bold font
             c.setFillColor(HexColor('#FFFFFF'))
@@ -351,10 +363,10 @@ class PDFGenerator:
             # Reset color
             c.setFillColor(black)
 
-    def _draw_rounded_rect(self, c, x, y, width, height, radius=3):
+    def _draw_rounded_rect(self, c, x, y, width, height, radius=3, color='#4A4A4A'):
         """Draw a rounded rectangle"""
-        c.setFillColor(HexColor('#4A4A4A'))  # Dark grey
-        c.setStrokeColor(HexColor('#4A4A4A'))
+        c.setFillColor(HexColor(color))
+        c.setStrokeColor(HexColor(color))
 
         # Draw the rounded rectangle path
         c.roundRect(x, y, width, height, radius, fill=1, stroke=1)

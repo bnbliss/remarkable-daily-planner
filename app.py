@@ -13,8 +13,24 @@ def index():
 @app.route('/generate', methods=['POST'])
 def generate_calendar():
     try:
-        # get form data
-        ical_urls = request.form.get('ical_urls', '').strip()
+        # get form data - collect calendar URLs and colors
+        ical_urls = []
+        calendar_colors = []
+        i = 0
+        while True:
+            url = request.form.get(f'ical_url_{i}', '').strip()
+            if not url and i > 0:
+                break
+            if url:
+                ical_urls.append(url)
+                color = request.form.get(f'color_{i}', '#4A4A4A')
+                calendar_colors.append(color)
+            i += 1
+            if i > 20:  # safety limit
+                break
+
+        ical_urls_str = ','.join(ical_urls)
+
         start_date_str = request.form.get('start_date', '')
         end_date_str = request.form.get('end_date', '')
         start_hour = int(request.form.get('start_hour', 6))
@@ -31,12 +47,12 @@ def generate_calendar():
         if not ical_urls:
             return jsonify({'error': 'Please provide at least one iCal URL'}), 400
 
-        # validate time range (8-12 hours)
+        # validate time range (8-16 hours)
         duration = end_hour - start_hour
         if duration < 8:
             return jsonify({'error': 'Time range must be at least 8 hours'}), 400
-        if duration > 12:
-            return jsonify({'error': 'Time range cannot exceed 12 hours'}), 400
+        if duration > 16:
+            return jsonify({'error': 'Time range cannot exceed 16 hours'}), 400
 
         # parse start date or default to next Monday
         if start_date_str:
@@ -59,7 +75,7 @@ def generate_calendar():
             return jsonify({'error': 'End date must be on or after start date'}), 400
 
         # fetch calendar events with timezone
-        fetcher = CalendarFetcher(ical_urls, timezone)
+        fetcher = CalendarFetcher(ical_urls_str, timezone)
         events = fetcher.fetch_events(start_date, end_date)
 
 
@@ -74,7 +90,7 @@ def generate_calendar():
         os.makedirs('output', exist_ok=True)
 
         generator = PDFGenerator()
-        generator.generate_pdf(start_date, end_date, events, output_path, start_hour, end_hour, show_todos)
+        generator.generate_pdf(start_date, end_date, events, output_path, start_hour, end_hour, show_todos, calendar_colors)
 
         # return the PDF file directly for download and remove from server
         try:
