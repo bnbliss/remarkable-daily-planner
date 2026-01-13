@@ -13,7 +13,7 @@ class CalendarFetcher:
         except:
             self.local_tz = pytz.timezone('America/Chicago')
 
-    def fetch_events(self, start_date, end_date):
+    def fetch_events(self, start_date, end_date, ics_contents=None, url_count=0):
         """
         Returns list of events in format:
         [
@@ -25,9 +25,15 @@ class CalendarFetcher:
                 'calendar_index': int
             }
         ]
+        ics_contents: list of ICS file contents (strings)
+        url_count: number of URL calendars (for correct calendar_index offset)
         """
+        if ics_contents is None:
+            ics_contents = []
+
         all_events = []
 
+        # Fetch from URLs
         for cal_index, url in enumerate(self.urls):
             try:
                 # try to force fresh data from ICS
@@ -42,6 +48,27 @@ class CalendarFetcher:
                 response.raise_for_status()
 
                 cal = Calendar.from_ical(response.content)
+
+                for component in cal.walk():
+                    if component.name == "VEVENT":
+                        # check for recurring events
+                        if component.get('RRULE'):
+                            recurring_events = self._parse_recurring_event(component, start_date, end_date, cal_index)
+                            all_events.extend(recurring_events)
+                        else:
+                            # single event
+                            event = self._parse_event(component, start_date, end_date, cal_index)
+                            if event:
+                                all_events.append(event)
+
+            except Exception as e:
+                continue
+
+        # Parse ICS file contents
+        for file_index, ics_content in enumerate(ics_contents):
+            try:
+                cal = Calendar.from_ical(ics_content)
+                cal_index = url_count + file_index  # offset by number of URL calendars
 
                 for component in cal.walk():
                     if component.name == "VEVENT":

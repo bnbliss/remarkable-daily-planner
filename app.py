@@ -31,6 +31,23 @@ def generate_calendar():
 
         ical_urls_str = ','.join(ical_urls)
 
+        # collect uploaded ICS files and their colors
+        ics_files = []
+        file_colors = []
+        i = 0
+        while True:
+            file = request.files.get(f'ics_file_{i}')
+            if not file and i > 0:
+                break
+            if file and file.filename:
+                ics_content = file.read().decode('utf-8')
+                ics_files.append(ics_content)
+                color = request.form.get(f'file_color_{i}', '#2E86AB')
+                file_colors.append(color)
+            i += 1
+            if i > 20:  # safety limit
+                break
+
         start_date_str = request.form.get('start_date', '')
         end_date_str = request.form.get('end_date', '')
         start_hour = int(request.form.get('start_hour', 6))
@@ -43,9 +60,9 @@ def generate_calendar():
         if not timezone:
             return jsonify({'error': 'Timezone information is required. Please ensure JavaScript is enabled.'}), 400
 
-        # validate inputs
-        if not ical_urls:
-            return jsonify({'error': 'Please provide at least one iCal URL'}), 400
+        # validate inputs - need at least one URL or one file
+        if not ical_urls and not ics_files:
+            return jsonify({'error': 'Please provide at least one iCal URL or upload an ICS file'}), 400
 
         # validate time range (8-16 hours)
         duration = end_hour - start_hour
@@ -76,7 +93,12 @@ def generate_calendar():
 
         # fetch calendar events with timezone
         fetcher = CalendarFetcher(ical_urls_str, timezone)
-        events = fetcher.fetch_events(start_date, end_date)
+        events = fetcher.fetch_events(start_date, end_date, ics_files, len(ical_urls))
+
+        # combine colors: URL colors first, then file colors
+        all_colors = calendar_colors + file_colors
+        if not all_colors:
+            all_colors = ['#4A4A4A']
 
 
         # generate filename based on date range
@@ -90,7 +112,7 @@ def generate_calendar():
         os.makedirs('output', exist_ok=True)
 
         generator = PDFGenerator()
-        generator.generate_pdf(start_date, end_date, events, output_path, start_hour, end_hour, show_todos, calendar_colors)
+        generator.generate_pdf(start_date, end_date, events, output_path, start_hour, end_hour, show_todos, all_colors)
 
         # return the PDF file directly for download and remove from server
         try:
@@ -109,4 +131,4 @@ def generate_calendar():
         return jsonify({'error': 'An error occurred generating the calendar'}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5050)

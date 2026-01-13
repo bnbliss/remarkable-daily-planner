@@ -12,7 +12,7 @@
 
         <form id="calendar-form">
             <div class="form-group">
-                <label>Your iCal Calendars:</label>
+                <label>Your iCal Calendars (URLs):</label>
                 <div id="calendar-list">
                     <div class="calendar-entry">
                         <input type="text" name="ical_url_0" class="ical-url" placeholder="https://calendar.google.com/calendar/ical/...">
@@ -20,7 +20,19 @@
                         <button type="button" class="remove-calendar" title="Remove">&times;</button>
                     </div>
                 </div>
-                <button type="button" id="add-calendar" class="add-btn">+ Add Calendar</button>
+                <button type="button" id="add-calendar" class="add-btn">+ Add Calendar URL</button>
+            </div>
+
+            <div class="form-group">
+                <label>Or upload ICS files:</label>
+                <div id="file-list">
+                    <div class="file-entry">
+                        <input type="file" name="ics_file_0" class="ics-file" accept=".ics">
+                        <input type="color" name="file_color_0" class="calendar-color" value="#2E86AB" title="Event color">
+                        <button type="button" class="remove-file" title="Remove">&times;</button>
+                    </div>
+                </div>
+                <button type="button" id="add-file" class="add-btn">+ Add ICS File</button>
             </div>
 
             <div class="form-group">
@@ -93,6 +105,33 @@
         document.getElementById('calendar-list').addEventListener('click', function(e) {
             if (e.target.classList.contains('remove-calendar')) {
                 const entries = document.querySelectorAll('.calendar-entry');
+                if (entries.length > 1) {
+                    e.target.parentElement.remove();
+                }
+            }
+        });
+
+        // File upload management
+        let fileCount = 1;
+        const fileColors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#3B1F2B', '#4A4A4A'];
+
+        document.getElementById('add-file').addEventListener('click', function() {
+            const fileList = document.getElementById('file-list');
+            const newEntry = document.createElement('div');
+            newEntry.className = 'file-entry';
+            const colorIndex = fileCount % fileColors.length;
+            newEntry.innerHTML = `
+                <input type="file" name="ics_file_${fileCount}" class="ics-file" accept=".ics">
+                <input type="color" name="file_color_${fileCount}" class="calendar-color" value="${fileColors[colorIndex]}" title="Event color">
+                <button type="button" class="remove-file" title="Remove">&times;</button>
+            `;
+            fileList.appendChild(newEntry);
+            fileCount++;
+        });
+
+        document.getElementById('file-list').addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-file')) {
+                const entries = document.querySelectorAll('.file-entry');
                 if (entries.length > 1) {
                     e.target.parentElement.remove();
                 }
