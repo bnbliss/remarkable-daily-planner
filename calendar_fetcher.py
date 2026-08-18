@@ -260,3 +260,42 @@ class CalendarFetcher:
             pass
 
         return recurring_events
+
+    def parse_google_event(self, g_event, cal_index=0):
+        """Parse a Google Calendar API event into our format."""
+        try:
+            summary = g_event.get('summary', 'Untitled')
+            start_data = g_event.get('start', {})
+            end_data = g_event.get('end', {})
+
+            # Check if it's an all-day event (has 'date' instead of 'dateTime')
+            if 'date' in start_data:
+                # All-day event
+                start_dt = datetime.strptime(start_data['date'], '%Y-%m-%d').date()
+                end_dt = datetime.strptime(end_data.get('date', start_data['date']), '%Y-%m-%d').date() if end_data else start_dt
+            else:
+                # Timed event
+                start_str = start_data.get('dateTime', '')
+                end_str = end_data.get('dateTime', '')
+
+                # Parse ISO format datetime
+                start_dt = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+                start_dt = start_dt.astimezone(self.local_tz)
+
+                if end_str:
+                    end_dt = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+                    end_dt = end_dt.astimezone(self.local_tz)
+                else:
+                    end_dt = None
+
+            event_date = start_dt.date() if isinstance(start_dt, datetime) else start_dt
+
+            return {
+                'start': start_dt,
+                'end': end_dt,
+                'title': summary,
+                'date': event_date.strftime('%Y-%m-%d'),
+                'calendar_index': cal_index
+            }
+        except Exception as e:
+            return None

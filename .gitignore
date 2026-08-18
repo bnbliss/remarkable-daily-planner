@@ -77,4 +77,6 @@ tmp/
 htmlcov/
 
 # Render specific
-.render/
+.render/token.json
+*token*.json
+.env.*

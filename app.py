@@ -1,14 +1,85 @@
 from flask import Flask, render_template, request, jsonify, send_file
 from datetime import datetime, timedelta
 import os
+import json
 from calendar_fetcher import CalendarFetcher
 from pdf_generator import PDFGenerator
+from google_calendar import GoogleCalendarHelper
+
+import os
+
+def _env(name: str) -> str:
+    """Read a credential from the environment, falling back to .env.
+
+    These used to be inline literals. GitHub push protection rejected the
+    push, correctly -- a client secret in source is a secret in every clone
+    and every backup.
+    """
+    v = os.environ.get(name)
+    if v:
+        return v
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    try:
+        with open(p) as fh:
+            for line in fh:
+                k, _, val = line.partition('=')
+                if k.strip() == name:
+                    return val.strip()
+    except OSError:
+        pass
+    raise RuntimeError(f'{name} not set -- add it to .env or the environment')
+
 
 app = Flask(__name__)
+
+# Google OAuth credentials
+GOOGLE_CLIENT_ID = _env('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = _env('GOOGLE_CLIENT_SECRET')
+google_helper = GoogleCalendarHelper(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
 
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/google/status')
+def google_status():
+    """Check if Google is authenticated."""
+    return jsonify({'authenticated': google_helper.is_authenticated()})
+
+@app.route('/google/auth')
+def google_auth():
+    """Get Google OAuth URL."""
+    auth_url = google_helper.get_auth_url()
+    return jsonify({'auth_url': auth_url})
+
+@app.route('/google/callback', methods=['POST'])
+def google_callback():
+    """Complete OAuth with authorization code."""
+    data = request.get_json()
+    code = data.get('code', '').strip()
+    if not code:
+        return jsonify({'error': 'Authorization code required'}), 400
+
+    try:
+        google_helper.authenticate_with_code(code)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/google/calendars')
+def google_calendars():
+    """Get list of Google calendars."""
+    if not google_helper.is_authenticated():
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    calendars = google_helper.get_calendars()
+    return jsonify({'calendars': calendars})
+
+@app.route('/google/disconnect', methods=['POST'])
+def google_disconnect():
+    """Disconnect Google account."""
+    google_helper.disconnect()
+    return jsonify({'success': True})
 
 @app.route('/generate', methods=['POST'])
 def generate_calendar():
@@ -48,11 +119,26 @@ def generate_calendar():
             if i > 20:  # safety limit
                 break
 
+        # collect selected Google calendars and their colors
+        google_calendars = []
+        google_colors = []
+        i = 0
+        while True:
+            cal_id = request.form.get(f'google_cal_{i}', '').strip()
+            if not cal_id and i > 0:
+                break
+            if cal_id:
+                google_calendars.append(cal_id)
+                color = request.form.get(f'google_color_{i}', '#4285F4')
+                google_colors.append(color)
+            i += 1
+            if i > 20:  # safety limit
+                break
+
         start_date_str = request.form.get('start_date', '')
         end_date_str = request.form.get('end_date', '')
         start_hour = int(request.form.get('start_hour', 6))
         end_hour = int(request.form.get('end_hour', 17))
-        show_todos = request.form.get('show_todos') == 'on'  # Checkbox sends 'on' when checked
 
         # Get client timezone from browser
         timezone = request.form.get('timezone')
@@ -60,9 +146,9 @@ def generate_calendar():
         if not timezone:
             return jsonify({'error': 'Timezone information is required. Please ensure JavaScript is enabled.'}), 400
 
-        # validate inputs - need at least one URL or one file
-        if not ical_urls and not ics_files:
-            return jsonify({'error': 'Please provide at least one iCal URL or upload an ICS file'}), 400
+        # validate inputs - need at least one source
+        if not ical_urls and not ics_files and not google_calendars:
+            return jsonify({'error': 'Please provide at least one calendar source'}), 400
 
         # validate time range (8-16 hours)
         duration = end_hour - start_hour
@@ -95,8 +181,18 @@ def generate_calendar():
         fetcher = CalendarFetcher(ical_urls_str, timezone)
         events = fetcher.fetch_events(start_date, end_date, ics_files, len(ical_urls))
 
-        # combine colors: URL colors first, then file colors
-        all_colors = calendar_colors + file_colors
+        # fetch Google Calendar events
+        google_event_count = len(ical_urls) + len(ics_files)
+        for i, cal_id in enumerate(google_calendars):
+            cal_index = google_event_count + i
+            google_events = google_helper.get_calendar_events(cal_id, start_date, end_date, timezone)
+            for g_event in google_events:
+                parsed = fetcher.parse_google_event(g_event, cal_index)
+                if parsed:
+                    events.append(parsed)
+
+        # combine colors: URL colors, then file colors, then Google colors
+        all_colors = calendar_colors + file_colors + google_colors
         if not all_colors:
             all_colors = ['#4A4A4A']
 
@@ -112,7 +208,7 @@ def generate_calendar():
         os.makedirs('output', exist_ok=True)
 
         generator = PDFGenerator()
-        generator.generate_pdf(start_date, end_date, events, output_path, start_hour, end_hour, show_todos, all_colors)
+        generator.generate_pdf(start_date, end_date, events, output_path, start_hour, end_hour, True, all_colors)
 
         # return the PDF file directly for download and remove from server
         try:

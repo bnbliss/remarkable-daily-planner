@@ -1,0 +1,14 @@
+[Unit]
+Description=Remarkable Daily Planner
+After=network.target
+
+[Service]
+Type=simple
+User=bnbliss
+WorkingDirectory=/home/bnbliss/remarkable-daily-planner
+ExecStart=/home/bnbliss/remarkable-daily-planner/venv/bin/python app.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

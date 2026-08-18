@@ -23,6 +23,22 @@
                 <button type="button" id="add-calendar" class="add-btn">+ Add Calendar URL</button>
             </div>
 
+            <div class="form-group google-section">
+                <label>Google Calendar:</label>
+                <div id="google-status">
+                    <button type="button" id="google-connect" class="google-btn">Connect Google Calendar</button>
+                </div>
+                <div id="google-auth-code" class="hidden">
+                    <p>Paste the authorization code from Google:</p>
+                    <input type="text" id="auth-code-input" placeholder="Paste code here...">
+                    <button type="button" id="submit-auth-code" class="add-btn">Submit</button>
+                </div>
+                <div id="google-calendars" class="hidden">
+                    <p class="connected-status">Connected <button type="button" id="google-disconnect" class="disconnect-btn">Disconnect</button></p>
+                    <div id="google-calendar-list"></div>
+                </div>
+            </div>
+
             <div class="form-group">
                 <label>Or upload ICS files:</label>
                 <div id="file-list">
@@ -68,13 +84,6 @@
                         <option value="18">6 PM</option>
                     </select>
                 </div>
-            </div>
-
-            <div class="form-group">
-                <label class="checkbox-label">
-                    <input type="checkbox" id="show_todos" name="show_todos" checked>
-                    Show To-Do boxes and lines
-                </label>
             </div>
 
             <button type="submit" id="generate-btn">Generate PDF</button>
@@ -138,6 +147,97 @@
             }
         });
 
+        // Google Calendar management
+        let googleCalendarCount = 0;
+
+        async function checkGoogleStatus() {
+            try {
+                const response = await fetch('/google/status');
+                const data = await response.json();
+                if (data.authenticated) {
+                    document.getElementById('google-status').classList.add('hidden');
+                    document.getElementById('google-auth-code').classList.add('hidden');
+                    document.getElementById('google-calendars').classList.remove('hidden');
+                    loadGoogleCalendars();
+                }
+            } catch (error) {
+                console.error('Error checking Google status:', error);
+            }
+        }
+
+        async function loadGoogleCalendars() {
+            try {
+                const response = await fetch('/google/calendars');
+                const data = await response.json();
+                const listDiv = document.getElementById('google-calendar-list');
+                listDiv.innerHTML = '';
+                googleCalendarCount = 0;
+
+                data.calendars.forEach((cal, index) => {
+                    const entry = document.createElement('div');
+                    entry.className = 'google-calendar-entry';
+                    entry.innerHTML = `
+                        <input type="checkbox" name="google_cal_${index}" value="${cal.id}" id="gcal_${index}" checked>
+                        <label for="gcal_${index}">${cal.summary}${cal.primary ? ' (Primary)' : ''}</label>
+                        <input type="color" name="google_color_${index}" class="calendar-color" value="${cal.backgroundColor}" title="Event color">
+                    `;
+                    listDiv.appendChild(entry);
+                    googleCalendarCount++;
+                });
+            } catch (error) {
+                console.error('Error loading calendars:', error);
+            }
+        }
+
+        document.getElementById('google-connect').addEventListener('click', async function() {
+            try {
+                const response = await fetch('/google/auth');
+                const data = await response.json();
+                window.open(data.auth_url, '_blank');
+                document.getElementById('google-status').classList.add('hidden');
+                document.getElementById('google-auth-code').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error starting Google auth:', error);
+            }
+        });
+
+        document.getElementById('submit-auth-code').addEventListener('click', async function() {
+            const code = document.getElementById('auth-code-input').value.trim();
+            if (!code) return;
+
+            try {
+                const response = await fetch('/google/callback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('google-auth-code').classList.add('hidden');
+                    document.getElementById('google-calendars').classList.remove('hidden');
+                    loadGoogleCalendars();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error submitting auth code:', error);
+            }
+        });
+
+        document.getElementById('google-disconnect').addEventListener('click', async function() {
+            try {
+                await fetch('/google/disconnect', { method: 'POST' });
+                document.getElementById('google-calendars').classList.add('hidden');
+                document.getElementById('google-calendar-list').innerHTML = '';
+                document.getElementById('google-status').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error disconnecting:', error);
+            }
+        });
+
+        // Check Google status on page load
+        checkGoogleStatus();
+
         // Update end hour options based on start hour selection
         function updateEndHourOptions() {
             const startHour = parseInt(document.getElementById('start_hour').value);
@@ -192,6 +292,19 @@
             // Add browser timezone to the form data
             const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
             formData.append('timezone', browserTimezone);
+
+            // Collect selected Google calendars with sequential indices
+            const googleEntries = document.querySelectorAll('.google-calendar-entry');
+            let googleIndex = 0;
+            googleEntries.forEach((entry) => {
+                const checkbox = entry.querySelector('input[type="checkbox"]');
+                const colorInput = entry.querySelector('input[type="color"]');
+                if (checkbox && checkbox.checked) {
+                    formData.append(`google_cal_${googleIndex}`, checkbox.value);
+                    formData.append(`google_color_${googleIndex}`, colorInput.value);
+                    googleIndex++;
+                }
+            });
 
             const statusDiv = document.getElementById('status');
             const generateBtn = document.getElementById('generate-btn');
